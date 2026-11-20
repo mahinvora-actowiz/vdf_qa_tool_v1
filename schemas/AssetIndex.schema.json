@@ -1,0 +1,57 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "properties": {
+      "sha256": {
+        "examples": [
+          "ed7002b439e9ac845f22357d822bac1444730fbdb6016d3ec9432297b9ec9f73"
+        ],
+        "description": "Hash of asset contents as 64 character hexadecimal string. Use the SHA-256 flavor of the SHA-2 algorithm. This field may be omitted only if the file is behind a login wall.",
+        "type": "string",
+        "pattern": "^[0-9a-f]{64}$"
+      },
+      "media_type": {
+        "examples": [
+          "image/jpeg",
+          "application/pdf",
+          "application/sldprt"
+        ],
+        "description": "The media type (formerly MIME type) describes the file format and is similar to the file extension. The media type can be extracted from the \"content-type\" response header when downloading the file. This header is typically more reliable than the file extension. If you're not sure, use the generic content type \"application/octet-stream\" for binary formats. This field may be omitted only if the file is behind a login wall.",
+        "type": "string",
+        "pattern": "^[a-z]+\\/[a-z0-9.+:_-]+$"
+      },
+      "source": {
+        "examples": [
+          "https://www.wolfautomation.com/media/pdf/lightcurtain/takex/takex-ssc-t800-lightcurtain.jpg"
+        ],
+        "description": "Fully qualified URL used to download the asset. IMPORTANT: this should match exactly the url in VendorProduct.assets[].source or VendorProduct.main_image.source",
+        "type": "string",
+        "minLength": 1
+      },
+      "length": {
+        "examples": [
+          23743
+        ],
+        "description": "Length of file in bytes",
+        "type": "number",
+        "minimum": 0
+      },
+      "filename": {
+        "examples": [
+          "download.pdf"
+        ],
+        "description": "If the server response sets a download filename different than the url, e.g. via the header `Content-Disposition: attachment; filename=\"downloaded.pdf\"`, set this field to that name,  otherwise do not set this field.  Generally this filed will be unset for images.",
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "required": [
+      "sha256",
+      "media_type",
+      "source",
+      "length"
+    ]
+  }
+}

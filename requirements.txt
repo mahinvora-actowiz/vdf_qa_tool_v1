@@ -1,0 +1,14 @@
+# Runtime (the core engine needs only jsonschema and referencing)
+jsonschema>=4.21,<5
+referencing>=0.35
+pymongo>=4.7,<5
+python-dotenv>=1.0,<2
+
+# API layer (optional for CLI-only use)
+fastapi>=0.110
+uvicorn>=0.29
+pydantic>=2.6
+
+# Tests
+pytest>=8
+httpx>=0.27     # used by the API tests (FastAPI TestClient)
