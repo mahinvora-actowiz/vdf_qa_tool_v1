@@ -14,7 +14,7 @@ from typing import Optional
 
 from .config import Settings
 from .issues_store import IssueStore
-from .pipeline import RunOptions, run_period
+from .pipeline import RunOptions, period_from_filename, run_period
 from datetime import datetime, timezone
 from .report import write_report
 from .schema_check import SchemaChecker
@@ -28,7 +28,7 @@ def _open(settings: Settings) -> tuple[SnapshotStore, IssueStore]:
 
 
 def cmd_run(args: argparse.Namespace, settings: Settings) -> int:
-    run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+    run_id = args.period or period_from_filename(args.current) or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
     title = args.title
     if title is None:
         title = input("Run title: ").strip()
@@ -44,6 +44,7 @@ def cmd_run(args: argparse.Namespace, settings: Settings) -> int:
         title=title,
         current_path=args.current,
         previous_path=args.previous,
+        previous_period=args.previous_period or (period_from_filename(args.previous) if args.previous else None),
         reject_on_schema_error=settings.reject_on_schema_error,
         max_flag_hits=settings.max_flag_hits,
     )
@@ -87,6 +88,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     r = sub.add_parser("run", help="validate and compare one monthly data file")
     r.add_argument("--current", required=True)
     r.add_argument("--previous")
+    r.add_argument("--period", help="current period (defaults to a data_file_YYYY_MM_DD filename or generated run ID)")
+    r.add_argument("--previous-period", help="label for the previous period")
     r.add_argument("--title", help="title for this run (prompted when omitted)")
     r.add_argument("--schema-dir")
     r.add_argument("--entry-schema")

@@ -36,7 +36,7 @@ class Settings:
         input_dir = os.environ.get("VDF_INPUT_DIR", "./inbox")
         Path(input_dir).mkdir(parents=True, exist_ok=True)
         return cls(
-            mongo_uri=os.environ.get("VDF_MONGODB_URI", "mongodb://localhost:27017"),
+            mongo_uri=os.environ.get("VDF_MONGODB_URI"),
             mongo_database=os.environ.get("VDF_MONGODB_DATABASE", "Ics_Auto_QATool"),
             input_dir=input_dir,
             schema_dir=os.environ.get("VDF_SCHEMA_DIR", "./schemas"),

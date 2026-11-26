@@ -13,5 +13,5 @@ if __name__ == "__main__":
     uvicorn.run(
         create_app(settings),
         host=os.getenv("VDF_HOST", "0.0.0.0"),
-        port=int(os.getenv("VDF_PORT", "8080")),
+        port=int(os.getenv("VDF_PORT", "8081")),
     )

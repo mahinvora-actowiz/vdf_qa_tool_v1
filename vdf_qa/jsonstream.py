@@ -8,7 +8,8 @@ chunk size plus the largest single record.
 from __future__ import annotations
 
 import json
-from typing import Any, Iterator
+import os
+from typing import Any, Callable, Iterator, Optional
 
 _WS = " \t\r\n"
 
@@ -17,9 +18,11 @@ class JsonStreamError(ValueError):
     pass
 
 
-def iter_json_array(path: str, chunk_size: int = 1 << 20) -> Iterator[Any]:
+def iter_json_array(path: str, chunk_size: int = 1 << 20,
+                    on_progress: Optional[Callable[[float], None]] = None) -> Iterator[Any]:
     """Yield each element of a top-level JSON array, one at a time."""
     decoder = json.JSONDecoder()
+    file_size = os.path.getsize(path)
     with open(path, "r", encoding="utf-8-sig") as fh:
         buf = ""
         pos = 0
@@ -31,8 +34,12 @@ def iter_json_array(path: str, chunk_size: int = 1 << 20) -> Iterator[Any]:
             if data:
                 buf = buf[pos:] + data
                 pos = 0
+                if on_progress:
+                    on_progress(min(fh.tell() / file_size, 1.0) if file_size else 1.0)
             else:
                 eof = True
+                if on_progress:
+                    on_progress(1.0)
 
         def skip_ws() -> None:
             nonlocal pos
@@ -49,16 +56,33 @@ def iter_json_array(path: str, chunk_size: int = 1 << 20) -> Iterator[Any]:
             raise JsonStreamError(f"{path}: top-level JSON value must be an array")
         pos += 1
 
+        expect_value = True
+        first = True
         while True:
             skip_ws()
             if pos >= len(buf):
                 raise JsonStreamError(f"{path}: unexpected end of file")
             ch = buf[pos]
             if ch == "]":
-                return
-            if ch == ",":
+                if not first and expect_value:
+                    raise JsonStreamError(f"{path}: trailing comma in array")
                 pos += 1
+                skip_ws()
+                if pos < len(buf) or not eof:
+                    while not eof and pos >= len(buf):
+                        refill()
+                        skip_ws()
+                    if pos < len(buf):
+                        raise JsonStreamError(f"{path}: trailing content after top-level array")
+                return
+            if not expect_value:
+                if ch != ",":
+                    raise JsonStreamError(f"{path}: expected ',' or ']' near offset {pos}")
+                pos += 1
+                expect_value = True
                 continue
+            if not first and ch == ",":
+                raise JsonStreamError(f"{path}: unexpected ',' near offset {pos}")
             while True:
                 try:
                     obj, end = decoder.raw_decode(buf, pos)
@@ -68,4 +92,6 @@ def iter_json_array(path: str, chunk_size: int = 1 << 20) -> Iterator[Any]:
                         raise JsonStreamError(f"{path}: malformed JSON near offset {pos}")
                     refill()
             pos = end
+            first = False
+            expect_value = False
             yield obj

@@ -13,7 +13,7 @@ from __future__ import annotations
 from pymongo import ASCENDING, DESCENDING, UpdateOne
 from pymongo.database import Database
 from collections import Counter, defaultdict
-from typing import Any, Iterable, Optional
+from typing import Any, Callable, Iterable, Optional
 
 from .rules import TAIL, TOP_N, _is_num, _weighted_percentiles, distribution_entries, extract, str_key
 
@@ -55,7 +55,7 @@ class Distribution:
     # ------------------------------------------------------------ build
     @classmethod
     def build(cls, conn: Database, period: str, rows: Iterable[dict],
-              batch: int = 5000) -> "Distribution":
+              batch: int = 5000, on_progress: Optional[Callable[[int], None]] = None) -> "Distribution":
         conn["dist_str"].create_index([("period", ASCENDING), ("dist_id", ASCENDING), ("h", ASCENDING)], unique=True)
         conn["dist_num"].create_index([("period", ASCENDING), ("dist_id", ASCENDING), ("v", ASCENDING)], unique=True)
         conn["dist_str"].delete_many({"period": period})
@@ -76,11 +76,15 @@ class Distribution:
                     dist.lengths[dist_id][len(s)] += 1
                     pend_str[(dist_id, str_key(s))] += 1
             n += 1
+            if on_progress and n % batch == 0:
+                on_progress(n)
             if n % batch == 0:
                 dist._flush(pend_str, pend_num)
                 pend_str.clear()
                 pend_num.clear()
         dist._flush(pend_str, pend_num)
+        if on_progress:
+            on_progress(n)
         dist._finalize()
         return dist
 

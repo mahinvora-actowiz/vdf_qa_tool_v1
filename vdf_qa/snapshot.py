@@ -42,8 +42,7 @@ class SnapshotStore:
         pass  # Mongo client is shared by stores and closed by its owner.
 
     def clear_rows(self) -> None:
-        """Drop temporary product payloads while retaining snapshot metadata."""
-        self._db.drop_collection("snapshot_work")
+        """Compatibility no-op: content-addressed snapshots are retained for reuse."""
 
     @property
     def database(self) -> Database:
@@ -60,9 +59,11 @@ class SnapshotStore:
                on_record: Optional[Callable[[int, object], None]] = None,
                on_duplicate: Optional[Callable[[str], None]] = None,
                on_missing_sku: Optional[Callable[[int], None]] = None,
+               on_progress: Optional[Callable[[float], None]] = None,
+               sha256: Optional[str] = None,
                batch_size: int = 5000, force: bool = False) -> IngestResult:
         self._rows.create_index([("month", ASCENDING), ("sku", ASCENDING)], unique=True)
-        digest = file_sha256(path)
+        digest = sha256 or file_sha256(path)
         existing = self.meta(month)
         if (existing and existing["sha256"] == digest and not force
                 and self._rows.count_documents({"month": month}) == existing["stored"]):
@@ -71,9 +72,26 @@ class SnapshotStore:
 
         self._rows.delete_many({"month": month})
         records = stored = duplicates = missing = 0
-        seen: set[str] = set()
-        batch: list[dict] = []
-        for index, record in enumerate(iter_json_array(path)):
+        batch: dict[str, dict] = {}
+
+        def flush() -> None:
+            nonlocal stored, duplicates
+            if not batch:
+                return
+            skus = list(batch)
+            result = self._rows.bulk_write([
+                UpdateOne({"month": month, "sku": sku},
+                          {"$setOnInsert": {"payload": batch[sku]}}, upsert=True)
+                for sku in skus
+            ], ordered=False)
+            inserted = set(result.upserted_ids)
+            stored += len(inserted)
+            duplicates += len(skus) - len(inserted)
+            for i, sku in enumerate(skus):
+                if i not in inserted and on_duplicate:
+                    on_duplicate(sku)
+            batch.clear()
+        for index, record in enumerate(iter_json_array(path, on_progress=on_progress)):
             records += 1
             if on_record:
                 on_record(index, record)
@@ -83,19 +101,15 @@ class SnapshotStore:
                 if on_missing_sku:
                     on_missing_sku(index)
                 continue
-            if sku in seen:
+            if sku in batch:
                 duplicates += 1
                 if on_duplicate:
                     on_duplicate(sku)
                 continue
-            seen.add(sku)
-            batch.append({"month": month, "sku": sku, "payload": record})
-            stored += 1
+            batch[sku] = record
             if len(batch) >= batch_size:
-                self._rows.insert_many(batch, ordered=False)
-                batch.clear()
-        if batch:
-            self._rows.insert_many(batch, ordered=False)
+                flush()
+        flush()
         now = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
         self._meta.replace_one({"_id": month}, {"_id": month, "month": month, "source_path": path,
             "sha256": digest, "records": records, "stored": stored, "duplicates": duplicates,
@@ -116,7 +130,7 @@ class SnapshotStore:
     def count_only_in(self, month_a: str, month_b: str) -> int:
         pipeline = [
             {"$match": {"month": month_a}},
-            {"$lookup": {"from": "snapshots", "let": {"sku": "$sku"}, "pipeline": [
+            {"$lookup": {"from": "snapshot_work", "let": {"sku": "$sku"}, "pipeline": [
                 {"$match": {"month": month_b}}, {"$match": {"$expr": {"$eq": ["$sku", "$$sku"]}}},
                 {"$limit": 1}], "as": "match"}},
             {"$match": {"match": {"$size": 0}}}, {"$count": "count"}]

@@ -6,9 +6,9 @@ month SKU by SKU, stores the issues, and produces a dashboard API and an HTML re
 
 For each data file the tool:
 
-1. Streams the file once (no full load). Each record is validated against the
-   client schema, checked for duplicate and missing SKUs, and stored as a snapshot
-   row keyed by `(period, sku)`.
+1. Streams both files without loading either fully into RAM. Each record is validated
+   against the client schema. Current-file records are checked for duplicate and missing
+   SKUs and stored as a snapshot row keyed by `(file hash, sku)`.
 2. Reuses the previous month's snapshot when its SHA-256 matches, otherwise ingests it.
 3. Builds the rank statistics used by the flags (top 5, rare 5%, shortest/longest 5%,
    lowest/highest 5%) from the current file, in MongoDB, not RAM.
@@ -67,18 +67,21 @@ python -m vdf_qa serve --host 127.0.0.1 --port 8000
 Pass `--period` and `--previous-period` explicitly for files whose names do not follow
 the `data_file_YYYY_MM_DD` pattern, or whose previous file is not a month-end. The ICS
 samples are one example (`2026-08-31-v1`, `2026-09-15-v1`, `2026-10-22-v2`).
+The CLI uses `--period` as the run identifier; if omitted, it infers one from a
+`data_file_YYYY_MM_DD.json` current filename, then falls back to a generated ID.
 
 ## API (when `serve` is running)
 
 | Method | Path | Purpose |
 |---|---|---|
-| POST | `/runs` | Start a run in the background (202). Body: `current_path`, optional `previous_path`, `period`, `previous_period` (YYYY-MM-DD). Paths must be inside `VDF_INPUT_DIR`. |
-| GET | `/runs` | All runs with verdicts |
-| GET | `/runs/{period}` | Run status and summary |
-| GET | `/runs/{period}/flags?top=5` | Per flag: count, owner, description, top N SKUs |
-| GET | `/runs/{period}/flags/{code}?offset&limit` | Ranked SKUs for one flag (the list below the top 5) |
+| POST | `/runs` | Start a comparison in the background (202). Body: exactly `title`, `previous_path`, and `current_path`. Both paths must resolve to files inside `VDF_INPUT_DIR`. |
+| GET | `/runs` | All runs with title, status, verdict, `progress_percent`, and `progress_stage` |
+| GET | `/runs/{period}` | Run status, progress, and summary, including `current_file_records` and `previous_file_records` when complete |
+| GET | `/runs/{period}/flags` | Per flag: total count, owner, description, and exactly the top 5 SKUs |
+| GET | `/runs/{period}/flags/{code}?offset=0&limit=200` | Paginated rows after the top 5 for one flag; response includes total count and `has_more` |
 | GET | `/runs/{period}/schema-errors?offset&limit` | Schema, duplicate and missing-SKU problems |
 | GET | `/runs/{period}/report.html` | Downloadable HTML report |
+| GET | `/runs/{period}/report.json?offset=0&limit=500` | Report summary, per-group totals, and one page of issues (limit max 5000) |
 | GET | `/healthz` | Liveness |
 
 One run executes at a time (process lock). A server restart stops a run in progress, so
@@ -147,21 +150,8 @@ mismatches.
 
 ## Tests
 
-```bash
-pytest -q
-```
-
-| File | Covers |
-|---|---|
-| `test_core.py` | streaming reader, bounded Levenshtein, schema cross-file refs, flag predicates, ranking |
-| `test_pipeline.py` | end-to-end run on synthetic data: duplicates, missing SKU, schema failure, reuse, HTML escaping |
-| `test_real_schema.py` | the client schema against the ICS samples (first 50 rows) and the vendor example |
-| `test_verdict_report.py` | verdict rules, optional cap, feed-wide banner |
-| `test_api.py` | API auth, input-folder restriction, period validation, full run then flags and report. Needs FastAPI. |
-
-Test status when this package was built: 37 tests pass. `test_api.py` was NOT
-executed in the build environment because FastAPI was not installed there. Run
-`pytest -q` on your machine with `pip install -r requirements.txt` to execute it.
+No test files are included in this repository snapshot. The historical test status
+and file list from an earlier build are not applicable to this checkout.
 
 ## Performance (measured on synthetic data)
 
@@ -174,7 +164,7 @@ executed in the build environment because FastAPI was not installed there. Run
 
 ## Known gaps
 
-- MongoDB stores snapshots, rank counters, runs, and issues.
+- MongoDB stores content-addressed snapshots, rank counters, runs, and issues. Snapshot payloads are retained for reuse, so deployments should set a retention policy.
 - The API runs jobs in a thread. Jobs do not survive a restart.
 - Lead-time flags that compare parsed values (`no_parsed`, `parsed1`, and related) need
   parsed values. The ICS data does not include them.
