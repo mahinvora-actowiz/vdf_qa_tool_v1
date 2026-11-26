@@ -51,7 +51,7 @@ def _sev_class(priority: str) -> str:
 
 def _rows_table(rows, *, top: bool) -> str:
     out = ["<table><thead><tr><th>#</th><th>SKU</th><th>Field</th><th>Magnitude</th>"
-           "<th>Old value</th><th>New value</th><th>Owner</th></tr></thead><tbody>"]
+           "<th>Old value</th><th>New value</th><th>Source file</th><th>Owner</th></tr></thead><tbody>"]
     for i, r in enumerate(rows, 1):
         cls = ' class="top"' if top else ""
         mag = r.get("magnitude")
@@ -59,7 +59,8 @@ def _rows_table(rows, *, top: bool) -> str:
         out.append(
             f"<tr{cls}><td>{i}</td><td>{_esc(r.get('sku'))}</td><td>{_esc(r.get('field'))}</td>"
             f"<td>{mag_s}</td><td class=\"val\">{_esc(r.get('old_value'))}</td>"
-            f"<td class=\"val\">{_esc(r.get('new_value'))}</td><td>{_esc(r.get('owner'))}</td></tr>"
+            f"<td class=\"val\">{_esc(r.get('new_value'))}</td>"
+            f"<td>{_esc(r.get('source_file'))}</td><td>{_esc(r.get('owner'))}</td></tr>"
         )
     out.append("</tbody></table>")
     return "".join(out)

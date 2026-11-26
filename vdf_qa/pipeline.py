@@ -176,11 +176,11 @@ def run_period(
 
         def on_duplicate(sku: str) -> None:
             buf.add((opts.period, "duplicate_sku", "DUPLICATE_SKU", "sku", HIGH, sku, 1.0, None, None,
-                     "SKU appears more than once; first occurrence kept"))
+                     "SKU appears more than once; first occurrence kept", opts.current_path))
 
         def on_missing(index: int) -> None:
             buf.add((opts.period, "missing_sku", "MISSING_SKU", "sku", HIGH, None, 1.0, None, None,
-                     f"Record at array index {index} has no usable SKU"))
+                     f"Record at array index {index} has no usable SKU", opts.current_path))
 
         progress(5, "validating_current_file")
         cur = snapshots.ingest(cur_period, opts.current_path, on_record=on_current_record,
